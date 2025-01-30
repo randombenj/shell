@@ -10,7 +10,7 @@ fi
 
 export PATH="$HOME/.local/bin:$PATH"
 source $ZSH/oh-my-zsh.sh
-eval "$(oh-my-posh init zsh --config https://gist.githubusercontent.com/randombenj/30a33a8ba24154562b90747c8df20d2f/raw/custom.omp.yml)"
+eval "$(oh-my-posh init zsh --config https://raw.githubusercontent.com/randombenj/shell/refs/heads/main/custom.omp.yml)"
 
 alias ip="ip --color"
 
