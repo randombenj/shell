@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json
+
+$schema: https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json
+blocks:
+    - alignment: left
+      segments:
+        - foreground: '#9E9E9E'
+          style: plain
+          template: '╭─ '
+          type: text
+      type: prompt
+
+    - alignment: left
+      segments:
+        - foreground: red
+          style: plain
+          template: ' % '
+          type: root
+        - style: plain
+          template: '<white>{{ .UserName }}</> <darkGray>@</> <white>{{ .HostName }}{{ if .SSHSession }} <#29B6F6></>{{ end }}</> '
+          type: session
+        - foreground: '#AEEA00'
+          properties:
+            style: full
+          style: plain
+          template: '<darkGray>in </>{{ .Path }} '
+          type: path
+        - properties:
+            fetch_status: true
+          style: plain
+          template: '<darkGray>on</> <white>{{ .HEAD }}</>{{ if .Working.Changed }} <#AD1457>{{ .Working.String }}</>{{ end }}{{ if .Staging.Changed }} <#558B2F>{{ .Staging.String }}</>{{ end }} '
+          type: git
+        - foreground: '#880E4F'
+          style: plain
+          template: (╯°□°)╯︵[<b>{{ if gt .Code 0 }}{{ .Code }}{{ end }}</b>]
+          type: exit
+      type: prompt
+
+    - alignment: right
+      segments:
+        - background: black
+          foreground: '#E4F34A'
+          leading_diamond: ' '
+          style: diamond
+          template:  {{ if .Error }}{{ .Error }}{{ else }}{{ if .Venv }}{{ .Venv }}{{ end }} {{ .Full }}{{ end }}
+          trailing_diamond: 
+          type: python
+        - background: black
+          foreground: '#7FD5EA'
+          leading_diamond: ' '
+          style: diamond
+          template: ﳑ {{ if .Error }}{{ .Error }}{{ else }}{{ .Full }}{{ end }}
+          trailing_diamond: 
+          type: go
+        - background: black
+          foreground: '#42E66C'
+          leading_diamond: ' '
+          style: diamond
+          template:  {{ if .PackageManagerIcon }}{{ .PackageManagerIcon }}{{ end }}{{ .Full }}
+          trailing_diamond: 
+          type: node
+      type: prompt
+
+    - alignment: left
+      newline: true
+      segments:
+        - foreground: '#9E9E9E'
+          style: plain
+          template: '╰─ '
+          type: text
+        - foreground: darkGray
+          style: plain
+          template: $
+          type: text
+      type: prompt
+
+final_space: true
+version: 2
