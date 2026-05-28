@@ -1,16 +1,13 @@
 # Path to your oh-my-zsh installation.
 export ZSH=~/.oh-my-zsh
 
-plugins=(git asdf zsh-syntax-highlighting zsh-autosuggestions zsh-autocomplete)
-
-# User configuration
-if [ -f $ZSH_CUSTOM/path.sh ]; then
-    source $ZSH_CUSTOM/path.sh
-fi
+plugins=(git zsh-syntax-highlighting zsh-autosuggestions zsh-autocomplete fzf mise)
 
 export PATH="$HOME/.local/bin:$PATH"
+export AWS_PAGER="" 
+export DISABLE_MAGIC_FUNCTIONS=true
 source $ZSH/oh-my-zsh.sh
-eval "$(oh-my-posh init zsh --config https://raw.githubusercontent.com/randombenj/shell/refs/heads/main/custom.omp.yml)"
+eval "$(oh-my-posh init zsh --config https://gist.githubusercontent.com/randombenj/30a33a8ba24154562b90747c8df20d2f/raw/custom.omp.yml)"
 
 alias ip="ip --color"
 
@@ -35,7 +32,7 @@ update-shell() {
 
     if [ -d "$dir" ]
     then
-      git -C $dir pull --quiet $remote $branch
+      git -C $dir pull --quiet $remote $branch 
     else
       git clone --quiet $repo $dir
     fi
@@ -50,7 +47,7 @@ update-shell() {
   }
 
   echo "  ↳ installing zsh-autosuggestions"
-  __update_or_clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
+  __update_or_clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions 
 
   echo "  ↳ installing zsh-syntax-highligting"
   __update_or_clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
@@ -66,14 +63,13 @@ update-shell() {
   __update_or_clone https://github.com/junegunn/fzf.git ~/.fzf
   ~/.fzf/install --key-bindings --no-completion --no-update-rc > /dev/null
 
-  echo " => installing 'asdf' (version manager)"
-  __update_or_clone https://github.com/asdf-vm/asdf.git ~/.asdf
-  __checkout_latest ~/.asdf
+  echo " => installing 'mise' (version manager)"
+  curl https://mise.run | sh > /dev/null
 }
 
 # autocomplete config
-bindkey '\t' menu-select "$terminfo[kcbt]" menu-select
-bindkey -M menuselect '\t' menu-complete "$terminfo[kcbt]" reverse-menu-complete
+#bindkey '\t' menu-select "$terminfo[kcbt]" menu-select
+#bindkey -M menuselect '\t' menu-complete "$terminfo[kcbt]" reverse-menu-complete
 
 # reset autocomplete history to default
 () {
@@ -88,7 +84,12 @@ bindkey -M menuselect '\t' menu-complete "$terminfo[kcbt]" reverse-menu-complete
    done
 }
 
+# disable file expansion: https://github.com/marlonrichert/zsh-autocomplete/issues/759#issuecomment-2439603287
+zstyle ':completion:*' completer _complete _complete:-fuzzy _correct _approximate _ignored
+
 BASE16_SHELL="$HOME/.config/base16-shell/base16-solarized.dark.sh"
 [[ -s $BASE16_SHELL ]] && source $BASE16_SHELL
 
-source <(fzf --zsh)
+# -- tools activation --
+source <(~/.fzf/bin/fzf --zsh)
+eval "$(~/.local/bin/mise activate zsh)"
