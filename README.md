@@ -12,7 +12,8 @@ one can run `update-shell` to install everything else.
 ### Installation
 
 ```sh
-curl https://raw.githubusercontent.com/randombenj/shell/refs/heads/main/.zshrc --output ~/.zshrc
+git clone https://github.com/randombenj/shell.git ~/Work/personal/shell
+ln -s ~/Work/personal/shell/.zshrc ~/.zshrc
 source ~/.zshrc
 update-shell
 ```

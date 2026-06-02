@@ -1,13 +1,22 @@
 # Path to your oh-my-zsh installation.
 export ZSH=~/.oh-my-zsh
 
-plugins=(git zsh-syntax-highlighting zsh-autosuggestions zsh-autocomplete fzf mise)
-
 export PATH="$HOME/.local/bin:$PATH"
-export AWS_PAGER="" 
+export AWS_PAGER=""
 export DISABLE_MAGIC_FUNCTIONS=true
-source $ZSH/oh-my-zsh.sh
-eval "$(oh-my-posh init zsh --config https://gist.githubusercontent.com/randombenj/30a33a8ba24154562b90747c8df20d2f/raw/custom.omp.yml)"
+
+# resolve directory of this .zshrc (following symlinks) to locate repo files
+SHELL_REPO_DIR="${${(%):-%x}:A:h}"
+
+# only load oh-my-zsh (and its plugins) once it's been installed by update-shell
+if [ -f "$ZSH/oh-my-zsh.sh" ]; then
+  plugins=(git zsh-syntax-highlighting zsh-autosuggestions zsh-autocomplete fzf mise)
+  source $ZSH/oh-my-zsh.sh
+fi
+
+if command -v oh-my-posh > /dev/null; then
+  eval "$(oh-my-posh init zsh --config $SHELL_REPO_DIR/custom.omp.yml)"
+fi
 
 alias ip="ip --color"
 
@@ -32,24 +41,16 @@ update-shell() {
 
     if [ -d "$dir" ]
     then
-      git -C $dir pull --quiet $remote $branch 
+      git -C $dir pull --quiet $remote $branch
     else
       git clone --quiet $repo $dir
     fi
   }
 
-  __checkout_latest() {
-    local dir="$1"
-
-    git -C $dir fetch --tags
-    local latest=$(git -C $dir describe --tags "$(git -C $dir rev-list --tags --max-count=1)")
-    git -C $dir checkout --quiet $latest
-  }
-
   echo "  ↳ installing zsh-autosuggestions"
-  __update_or_clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions 
+  __update_or_clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
 
-  echo "  ↳ installing zsh-syntax-highligting"
+  echo "  ↳ installing zsh-syntax-highlighting"
   __update_or_clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
 
   echo "  ↳ installing zsh-autocomplete"
@@ -58,6 +59,9 @@ update-shell() {
   echo " => installing oh my posh (shell theme)"
   mkdir -p ~/.local/bin
   curl -s https://ohmyposh.dev/install.sh | bash -s -- -d ~/.local/bin > /dev/null
+
+  echo "  ↳ installing meslo nerd font"
+  ~/.local/bin/oh-my-posh font install --headless meslo
 
   echo " => installing fzf (fuzzy history search)"
   __update_or_clone https://github.com/junegunn/fzf.git ~/.fzf
@@ -87,9 +91,6 @@ update-shell() {
 # disable file expansion: https://github.com/marlonrichert/zsh-autocomplete/issues/759#issuecomment-2439603287
 zstyle ':completion:*' completer _complete _complete:-fuzzy _correct _approximate _ignored
 
-BASE16_SHELL="$HOME/.config/base16-shell/base16-solarized.dark.sh"
-[[ -s $BASE16_SHELL ]] && source $BASE16_SHELL
-
 # -- tools activation --
-source <(~/.fzf/bin/fzf --zsh)
-eval "$(~/.local/bin/mise activate zsh)"
+[[ -x ~/.fzf/bin/fzf ]] && source <(~/.fzf/bin/fzf --zsh)
+[[ -x ~/.local/bin/mise ]] && eval "$(~/.local/bin/mise activate zsh)"
