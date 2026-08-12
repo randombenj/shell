@@ -27,8 +27,22 @@ c() {
 
 update-shell() {
 
+  # Run a command silently, replaying its output only if it fails.
+  __quiet() {
+    local out
+    out="$("$@" 2>&1)" && return 0
+    print -u2 -- "$out"
+    return 1
+  }
+
   echo " => installing oh my zsh"
-  sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" --keep-zshrc > /dev/null
+  # install.sh refuses to run when $ZSH already exists; updates go through upgrade.sh instead.
+  if [ -d "$ZSH" ]; then
+    __quiet zsh "$ZSH/tools/upgrade.sh" || echo "     [WARN] could not update oh-my-zsh"
+  else
+    __quiet sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" --keep-zshrc \
+      || echo "     [WARN] could not install oh-my-zsh"
+  fi
 
   __update_or_clone() {
     # Clone or pull (update) a oh-my-zsh plugin
@@ -41,10 +55,10 @@ update-shell() {
 
     if [ -d "$dir" ]
     then
-      git -C $dir pull --quiet $remote $branch
+      __quiet git -C $dir pull --quiet $remote $branch
     else
-      git clone --quiet $repo $dir
-    fi
+      __quiet git clone --quiet $repo $dir
+    fi || echo "     [WARN] could not update ${dir:t}"
   }
 
   echo "  ↳ installing zsh-autosuggestions"
@@ -58,17 +72,23 @@ update-shell() {
 
   echo " => installing oh my posh (shell theme)"
   mkdir -p ~/.local/bin
-  curl -s https://ohmyposh.dev/install.sh | bash -s -- -d ~/.local/bin > /dev/null
+  __quiet sh -c 'curl -fsSL https://ohmyposh.dev/install.sh | bash -s -- -d ~/.local/bin'
 
   echo "  ↳ installing meslo nerd font"
-  ~/.local/bin/oh-my-posh font install --headless meslo
+  if fc-list 2>/dev/null | grep -qi 'Meslo.*Nerd Font'; then
+    echo "     already present, skipping"
+  # Installing by name resolves via the GitHub API, which is rate-limited per egress IP.
+  elif ! __quiet ~/.local/bin/oh-my-posh font install --plain \
+      https://github.com/ryanoasis/nerd-fonts/releases/latest/download/Meslo.zip; then
+    echo "     [WARN] meslo install failed, skipping"
+  fi
 
   echo " => installing fzf (fuzzy history search)"
   __update_or_clone https://github.com/junegunn/fzf.git ~/.fzf
-  ~/.fzf/install --key-bindings --no-completion --no-update-rc > /dev/null
+  __quiet ~/.fzf/install --key-bindings --no-completion --no-update-rc
 
   echo " => installing 'mise' (version manager)"
-  curl https://mise.run | sh > /dev/null
+  __quiet sh -c 'curl -fsSL https://mise.run | sh'
 }
 
 # autocomplete config
