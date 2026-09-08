@@ -12,6 +12,17 @@ SHELL_REPO_DIR="${${(%):-%x}:A:h}"
 if [ -f "$ZSH/oh-my-zsh.sh" ]; then
   plugins=(git zsh-syntax-highlighting zsh-autosuggestions zsh-autocomplete fzf mise)
   source $ZSH/oh-my-zsh.sh
+
+  # WORKAROUND: oh-my-zsh runs compinit before zsh-autocomplete prepends its
+  # Completions dir to fpath, so the plugin's #autoload helpers never get
+  # registered and it errors with `command not found: _autocomplete__*`.
+  () {
+    setopt localoptions extendedglob
+    local -a helpers=(
+      ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autocomplete/Completions/_*~*.zwc(N-.:t)
+    )
+    (( $#helpers )) && autoload -Uz $helpers
+  }
 fi
 
 if command -v oh-my-posh > /dev/null; then
