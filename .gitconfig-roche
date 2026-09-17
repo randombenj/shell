@@ -1,0 +1,7 @@
+[user]
+	# replace with the real address, this file is copied (not linked) to ~/.gitconfig-roche
+	email = first.last@roche.com
+
+[core]
+	# Specify the exact SSH key for Roche
+	sshCommand = "ssh -i ~/.ssh/id_ed25519_roche -F /dev/null"

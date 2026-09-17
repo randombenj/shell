@@ -1,0 +1,6 @@
+[user]
+	email = randombenj@gmail.com
+
+[core]
+	# Specify the exact SSH key for Personal
+	sshCommand = "ssh -i ~/.ssh/id_ed25519 -F /dev/null"

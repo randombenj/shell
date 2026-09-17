@@ -1,0 +1,23 @@
+[user]
+	name = Benj Fassbind
+
+[includeIf "gitdir/i:~/Work/roche/"]
+	path = ~/.gitconfig-roche
+
+[includeIf "gitdir/i:~/Work/personal/"]
+	path = ~/.gitconfig-personal
+
+[filter "lfs"]
+	process = git-lfs filter-process
+	required = true
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+
+[push]
+	autoSetupRemote = true
+
+[pull]
+	rebase = true
+
+[init]
+	defaultBranch = main
