@@ -4,7 +4,7 @@
 #   - Dracula GTK theme + Dracula GNOME Shell theme (enabled via User Themes)
 #   - my GNOME extensions (Dash to Dock, Frippery Move Clock, User Themes)
 #   - Dash to Dock instead of the Ubuntu Dock
-#   - gnome-terminal colors/font matching the shell prompt
+#   - zsh + .zshrc, the Meslo Nerd Font and gnome-terminal colors/font
 #   - pass + browserpass (Chrome extension + native host)
 #   - git config with separate personal / roche identities
 #
@@ -27,6 +27,17 @@ PASSWORD_STORE_DIR="$HOME/.password-store"
 PASS_GPG_ID="randombenj@gmail.com"
 BROWSERPASS_VERSION="3.1.2"
 
+# the gnome-terminal profile below is set to this family, so it has to exist
+NERD_FONT_ZIP="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/Meslo.zip"
+FONT_DIR="$HOME/.local/share/fonts/MesloLGS-NF"
+
+# appimaged watches this directory (and ~/Downloads) and writes the .desktop files
+APPIMAGE_DIR="$HOME/Applications"
+
+# 1 = light: what prefers-color-scheme reports to websites, the Chrome UI itself
+# keeps following the (dark) desktop theme
+CHROME_LIGHT_FLAGS="--blink-settings=preferredColorScheme=1,preferredRootScrollbarColorScheme=1"
+
 ENABLED_EXTENSIONS=(
   "user-theme@gnome-shell-extensions.gcampax.github.com"
   "dash-to-dock@micxgx.gmail.com"
@@ -47,6 +58,14 @@ DISABLED_EXTENSIONS=(
   "ding@rastersoft.com"
 )
 
+# the dock, in order, Super+1 activates the first one
+FAVORITE_APPS=(
+  "google-chrome.desktop"
+  "org.gnome.Terminal.desktop"
+  "com.microsoft.VSCode.desktop"
+  "code.desktop" # the name the VS Code deb used to install
+)
+
 log() { echo " => $*"; }
 sub() { echo "  ↳ $*"; }
 
@@ -62,7 +81,7 @@ install_packages() {
   sudo apt-get update -qq
   sudo apt-get install -y -qq \
     git git-lfs curl unzip jq dconf-cli gnome-shell-extension-manager \
-    pass gnupg pinentry-gnome3 make
+    pass gnupg pinentry-gnome3 make zsh fontconfig power-profiles-daemon
 }
 
 link_config() {
@@ -107,21 +126,23 @@ configure_git() {
 install_pass() {
   log "setting up pass"
 
-  if ! gpg --list-secret-keys "$PASS_GPG_ID" >/dev/null 2>&1; then
-    echo "     [WARN] no secret GPG key for $PASS_GPG_ID" >&2
-    echo "            restore it first:  gpg --import <backup.asc> && gpg --edit-key $PASS_GPG_ID trust" >&2
-    return 0
-  fi
+  # the GPG key is only needed to decrypt, cloning the store works without it
+  gpg --list-secret-keys "$PASS_GPG_ID" >/dev/null 2>&1 || {
+    echo "     [WARN] no secret GPG key for $PASS_GPG_ID, the store will not decrypt" >&2
+    echo "            restore it with:  gpg --import <backup.asc> && gpg --edit-key $PASS_GPG_ID trust" >&2
+  }
 
   if [ -d "$PASSWORD_STORE_DIR/.git" ]; then
     sub "password store already cloned, pulling"
     git -C "$PASSWORD_STORE_DIR" pull --quiet --ff-only || echo "     [WARN] could not update the password store" >&2
   elif [ -e "$PASSWORD_STORE_DIR" ]; then
     sub "$PASSWORD_STORE_DIR exists but is not a git clone, leaving it alone"
+  elif [ ! -f "$HOME/.ssh/id_ed25519" ]; then
+    echo "     [WARN] ~/.ssh/id_ed25519 is missing, skipping the password store clone" >&2
   else
     sub "cloning the password store"
     git clone --quiet "$PASSWORD_STORE_REPO" "$PASSWORD_STORE_DIR" \
-      || echo "     [WARN] clone failed, is ~/.ssh/id_ed25519 present and added to GitHub?" >&2
+      || echo "     [WARN] clone failed, is ~/.ssh/id_ed25519 added to GitHub?" >&2
   fi
 }
 
@@ -131,18 +152,21 @@ install_browserpass() {
   if [ -x /usr/bin/browserpass-linux64 ]; then
     sub "already installed, skipping"
   else
-    local tmp src
-    tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' RETURN
-
     sub "downloading browserpass-native $BROWSERPASS_VERSION"
-    curl -fsSL -o "$tmp/browserpass.tar.gz" \
-      "https://github.com/browserpass/browserpass-native/releases/download/${BROWSERPASS_VERSION}/browserpass-linux64-${BROWSERPASS_VERSION}.tar.gz"
-    tar -xzf "$tmp/browserpass.tar.gz" -C "$tmp"
+    # subshell so the cleanup trap dies with it instead of leaking into the caller
+    (
+      tmp="$(mktemp -d)"
+      trap 'rm -rf "$tmp"' EXIT
 
-    src="$tmp/browserpass-linux64-${BROWSERPASS_VERSION}"
-    make -C "$src" BIN=browserpass-linux64 configure >/dev/null
-    sudo make -C "$src" BIN=browserpass-linux64 install >/dev/null
+      # the release tag carries a leading "v", the asset name does not
+      curl -fsSL -o "$tmp/browserpass.tar.gz" \
+        "https://github.com/browserpass/browserpass-native/releases/download/v${BROWSERPASS_VERSION}/browserpass-linux64-${BROWSERPASS_VERSION}.tar.gz"
+      tar -xzf "$tmp/browserpass.tar.gz" -C "$tmp"
+
+      src="$tmp/browserpass-linux64-${BROWSERPASS_VERSION}"
+      make -C "$src" BIN=browserpass-linux64 configure >/dev/null
+      sudo make -C "$src" BIN=browserpass-linux64 install >/dev/null
+    )
   fi
 
   # `install` drops the Makefile in /usr/lib/browserpass, the *-user target
@@ -166,17 +190,25 @@ install_gtk_theme() {
     rm -rf "$THEME_DIR"
     git clone --quiet --depth 1 "$DRACULA_GTK_REPO" "$THEME_DIR"
   fi
+
+  # GTK4 / libadwaita apps (Settings, Files, ...) ignore the gtk-theme setting
+  # and only read the user stylesheet, so point that at the theme
+  sub "applying the theme to GTK4 apps"
+  local gtk4="$HOME/.config/gtk-4.0" css
+  mkdir -p "$gtk4"
+  # imported rather than symlinked: GTK resolves the theme's url("../assets/...")
+  # against the path it loaded, and without the images the window buttons vanish
+  rm -f "$gtk4/assets"
+  for css in gtk.css gtk-dark.css; do
+    rm -f "$gtk4/$css"
+    echo "@import url(\"file://$THEME_DIR/gtk-4.0/$css\");" >"$gtk4/$css"
+  done
 }
 
 install_gnome_extension() {
   # Download and install an extension from extensions.gnome.org for the running shell.
   local uuid="$1"
-  local shell_version info url tmp
-
-  if [ -d "$EXT_DIR/$uuid" ]; then
-    sub "$uuid already installed, skipping"
-    return 0
-  fi
+  local shell_version info url installed available
 
   shell_version="$(gnome-shell --version | awk '{print $3}' | cut -d. -f1)"
   info="$(curl -fsSL "https://extensions.gnome.org/extension-info/?uuid=${uuid}&shell_version=${shell_version}")" || {
@@ -184,14 +216,30 @@ install_gnome_extension() {
     return 0
   }
 
+  # an extension built for a newer shell claims to support this one and then
+  # dies on a missing API, so go by the version EGO serves for it, not by the
+  # directory being there
+  available="$(jq -r --arg v "$shell_version" '.shell_version_map[$v].version // empty' <<<"$info")"
+  if [ -d "$EXT_DIR/$uuid" ]; then
+    installed="$(jq -r '.version // empty' "$EXT_DIR/$uuid/metadata.json" 2>/dev/null || true)"
+    if [ -n "$installed" ] && [ "$installed" = "$available" ]; then
+      sub "$uuid v$installed already installed, skipping"
+      return 0
+    fi
+    sub "$uuid v${installed:-?} does not match v${available:-?} for GNOME $shell_version, reinstalling"
+  fi
+
   url="https://extensions.gnome.org$(jq -r '.download_url' <<<"$info")"
-  tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' RETURN
 
   sub "installing $uuid"
-  curl -fsSL -o "$tmp/ext.zip" "$url"
-  # gnome-extensions takes care of unpacking and compiling the gsettings schemas
-  gnome-extensions install --force "$tmp/ext.zip"
+  # subshell so the cleanup trap dies with it instead of leaking into the caller
+  (
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    curl -fsSL -o "$tmp/ext.zip" "$url"
+    # gnome-extensions takes care of unpacking and compiling the gsettings schemas
+    gnome-extensions install --force "$tmp/ext.zip"
+  )
 }
 
 install_gnome_extensions() {
@@ -257,8 +305,60 @@ configure_dash_to_dock() {
   dconf write $d/show-mounts-network false
   dconf write $d/show-mounts-only-mounted true
 
-  gsettings set org.gnome.shell favorite-apps \
-    "['google-chrome.desktop', 'org.gnome.Terminal.desktop', 'code.desktop']"
+  # the shell drops the whole list when one entry does not resolve, and VS Code
+  # is com.microsoft.VSCode.desktop or code.desktop depending on the build
+  local app list=""
+  for app in "${FAVORITE_APPS[@]}"; do
+    if [ -f "/usr/share/applications/$app" ] || [ -f "$HOME/.local/share/applications/$app" ]; then
+      list+="'$app', "
+    else
+      sub "$app is not installed, leaving it out of the favorites"
+    fi
+  done
+
+  gsettings set org.gnome.shell favorite-apps "[${list%, }]"
+}
+
+configure_zsh() {
+  log "setting up zsh"
+  # the rest (oh-my-zsh, oh-my-posh, plugins, fzf, mise) is installed by the
+  # `update-shell` function that .zshrc defines
+  link_config .zshrc
+}
+
+install_nerd_font() {
+  log "installing the Meslo Nerd Font"
+
+  if fc-list | grep -qi 'Meslo.*Nerd Font'; then
+    sub "already present, skipping"
+    return 0
+  fi
+
+  sub "downloading Meslo.zip"
+  mkdir -p "$FONT_DIR"
+  # subshell so the cleanup trap dies with it instead of leaking into the caller
+  (
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+
+    curl -fsSL -o "$tmp/Meslo.zip" "$NERD_FONT_ZIP"
+    unzip -qo "$tmp/Meslo.zip" -d "$FONT_DIR" -x 'LICENSE*' 'README*'
+  )
+  fc-cache -f "$FONT_DIR" >/dev/null
+}
+
+configure_default_terminal() {
+  log "making gnome-terminal the default terminal"
+
+  # Ubuntu ships zutty, which registers the x-terminal-emulator alternative with
+  # the same priority as gnome-terminal and wins the tie, so Ctrl+Alt+T (which
+  # launches x-terminal-emulator) ends up opening zutty
+  if dpkg -s zutty >/dev/null 2>&1; then
+    sub "removing zutty"
+    sudo apt-get purge -y -qq zutty
+  fi
+
+  sudo update-alternatives --set x-terminal-emulator /usr/bin/gnome-terminal.wrapper >/dev/null
 }
 
 configure_terminal() {
@@ -280,6 +380,122 @@ configure_terminal() {
   dconf write "$p/custom-command" "'zsh'"
 }
 
+configure_chrome_color_scheme() {
+  log "reporting a light color scheme to websites"
+
+  local src=/usr/share/applications/google-chrome.desktop
+  local dst="$HOME/.local/share/applications/google-chrome.desktop"
+
+  if [ ! -f "$src" ]; then
+    sub "Chrome is not installed, skipping"
+    return 0
+  fi
+
+  # a copy of the packaged entry with the flags injected, regenerated on every
+  # run so it does not drift away from the one Chrome ships
+  sub "overriding google-chrome.desktop"
+  mkdir -p "$(dirname "$dst")"
+  sed -E "s|^Exec=/usr/bin/google-chrome-stable|& $CHROME_LIGHT_FLAGS|" "$src" >"$dst"
+
+  command -v update-desktop-database >/dev/null \
+    && update-desktop-database "$(dirname "$dst")" >/dev/null 2>&1 || true
+}
+
+github_release_asset() {
+  # print the download URL of a release asset:
+  #   github_release_asset owner/repo latest|<tag> <name regex>
+  # the release pages are scraped because api.github.com is rate limited per
+  # egress IP, which a corporate network runs into immediately
+  local repo="$1" release="$2" pattern="$3" tag="$2" path
+
+  if [ "$release" = "latest" ]; then
+    tag="$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/$repo/releases/latest" || true)"
+    tag="${tag##*/}"
+  fi
+
+  path="$(curl -fsSL "https://github.com/$repo/releases/expanded_assets/$tag" \
+    | grep -oE "/$repo/releases/download/[^\"]+" \
+    | grep -E "$pattern" \
+    | awk 'NR == 1' || true)"
+
+  if [ -n "$path" ]; then
+    echo "https://github.com$path"
+  fi
+}
+
+install_fuse2() {
+  # AppImages mount themselves with FUSE 2, Ubuntu only ships FUSE 3 by default
+  if dpkg -s libfuse2t64 >/dev/null 2>&1 || dpkg -s libfuse2 >/dev/null 2>&1; then
+    return 0
+  fi
+  sub "installing libfuse2"
+  sudo apt-get install -y -qq libfuse2t64 2>/dev/null || sudo apt-get install -y -qq libfuse2
+}
+
+install_appimaged() {
+  log "installing appimaged (AppImage desktop integration)"
+  install_fuse2
+  mkdir -p "$APPIMAGE_DIR"
+
+  local dst="$APPIMAGE_DIR/appimaged.AppImage" url
+  if [ -x "$dst" ]; then
+    sub "already installed, skipping"
+  else
+    # go-appimage only publishes rolling builds, all under the 'continuous' tag
+    url="$(github_release_asset probonopd/go-appimage continuous 'appimaged-.*-x86_64\.AppImage$')"
+    if [ -z "$url" ]; then
+      echo "     [WARN] no appimaged build found, skipping" >&2
+      return 0
+    fi
+    sub "downloading ${url##*/}"
+    curl -fsSL -o "$dst" "$url"
+    chmod +x "$dst"
+  fi
+
+  sub "enabling the appimaged user service"
+  mkdir -p "$HOME/.config/systemd/user"
+  cat >"$HOME/.config/systemd/user/appimaged.service" <<EOF
+[Unit]
+Description=AppImage desktop integration daemon
+After=graphical-session.target
+
+[Service]
+ExecStart=$dst
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+EOF
+  systemctl --user daemon-reload
+  systemctl --user enable --now appimaged.service
+}
+
+install_logseq() {
+  log "installing the Logseq OG AppImage"
+  mkdir -p "$APPIMAGE_DIR"
+
+  # logseq/logseq now ships the DB version, the file-based app lives on in logseq/og
+  local url name
+  url="$(github_release_asset logseq/og latest 'Logseq-OG-linux-x64-.*\.AppImage$')"
+  if [ -z "$url" ]; then
+    echo "     [WARN] no Logseq OG release found, skipping" >&2
+    return 0
+  fi
+
+  name="${url##*/}"
+  if [ -x "$APPIMAGE_DIR/$name" ]; then
+    sub "$name already installed"
+  else
+    sub "downloading $name"
+    curl -fsSL -o "$APPIMAGE_DIR/$name.part" "$url"
+    mv "$APPIMAGE_DIR/$name.part" "$APPIMAGE_DIR/$name"
+    chmod +x "$APPIMAGE_DIR/$name"
+  fi
+
+  sub "removing older versions and the DB build"
+  find "$APPIMAGE_DIR" -maxdepth 1 -name 'Logseq-*.AppImage' ! -name "$name" -delete
+}
+
 main() {
   require_gnome
   install_packages
@@ -289,12 +505,19 @@ main() {
   toggle_gnome_extensions
   apply_theme
   configure_dash_to_dock
+  configure_zsh
+  install_nerd_font
+  configure_default_terminal
   configure_terminal
+  configure_chrome_color_scheme
+  install_appimaged
+  install_logseq
   install_pass
   install_browserpass
 
   echo
   echo " => done, log out and back in for the shell theme and extensions to load"
+  echo "    then run 'update-shell' in a zsh session to install oh-my-zsh / oh-my-posh"
 }
 
 main "$@"
