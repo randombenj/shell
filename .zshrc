@@ -36,6 +36,37 @@ c() {
   curl -m 10 "http://cheat.sh/${1}" 2>/dev/null || printf '%s\n' "[ERROR] Something broke"
 }
 
+roche-vpn() {
+  # Connect to the Roche GlobalProtect VPN.
+  #
+  # SAML runs in Chrome (which keeps the IdP session, so no 2FA on every
+  # connect) and --cookie-cache remembers the portal cookie so reconnects
+  # skip the browser round-trip entirely.
+
+  local cert_dir="$HOME/.config/rlcaas-roche"
+
+  case "${1:-connect}" in
+    connect)
+      sudo -E gpclient connect portalgp.roche.net \
+        --gateway gwgp_rmu.roche.net \
+        --certificate "$cert_dir/$USER.pem" \
+        --sslkey "$cert_dir/$USER.key" \
+        --mtu 1400 \
+        --hip \
+        --os Linux \
+        --browser chrome \
+        --cookie-cache
+      ;;
+    disconnect)
+      sudo gpclient disconnect
+      ;;
+    *)
+      print -u2 "usage: roche-vpn [connect|disconnect]"
+      return 1
+      ;;
+  esac
+}
+
 update-shell() {
 
   # Run a command silently, replaying its output only if it fails.
@@ -100,6 +131,14 @@ update-shell() {
 
   echo " => installing 'mise' (version manager)"
   __quiet sh -c 'curl -fsSL https://mise.run | sh'
+
+  echo " => installing global language runtimes"
+  local tool
+  for tool in go@latest node@latest python@3.12 rust@latest; do
+    echo "  ↳ installing ${tool}"
+    __quiet ~/.local/bin/mise use --global --yes "$tool" \
+      || echo "     [WARN] could not install $tool"
+  done
 }
 
 # autocomplete config
